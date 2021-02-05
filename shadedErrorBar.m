@@ -1,4 +1,4 @@
-function varargout=shadedErrorBar(x,y,errBar,varargin)
+function varargout=shadedErrorBar(x,y,errBar, args)
 % generate continuous error bar area around a line plot
 %
 % function H=shadedErrorBar(x,y,errBar, ...)
@@ -69,25 +69,25 @@ function varargout=shadedErrorBar(x,y,errBar,varargin)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Parse input arguments
-narginchk(3,inf)
+arguments
+    x
+    y
+    errBar
+    
+    args.lineProps = '-k'
+    args.transparent (1,1) logical = true
+    args.mainLine (1,1) logical = true
+    args.edgeLines (1,1) logical = true
+    args.patchSaturation (1,1) double = 0.2
+    args.patchDisplayName char = ''
 
-params = inputParser;
-params.CaseSensitive = false;
-params.addParameter('lineProps', '-k', @(x) ischar(x) | iscell(x));
-if (sum( size(ver('MATLAB'))) > 0  )
-  params.addParameter('transparent', true, @(x) islogical(x) || x==0 || x==1);
-elseif (sum( size(ver('Octave'))) > 0  )
-  params.addParameter('transparent', false, @(x) islogical(x) || x==0 || x==1);
 end
-params.addParameter('patchSaturation', 0.2, @(x) isnumeric(x) && x>=0 && x<=1);
 
-params.parse(varargin{:});
-
-%Extract values from the inputParser
-lineProps =  params.Results.lineProps;
-transparent =  params.Results.transparent;
-patchSaturation = params.Results.patchSaturation;
+lineProps =  args.lineProps;
+transparent =  args.transparent;
+patchSaturation = args.patchSaturation;
+mainLine = args.mainLine;
+edgeLines = args.edgeLines;
 
 if ~iscell(lineProps), lineProps={lineProps}; end
 
@@ -135,7 +135,7 @@ end
 initialHoldStatus=ishold;
 if ~initialHoldStatus, hold on,  end
 
-H = makePlot(x,y,errBar,lineProps,transparent,patchSaturation);
+H = makePlot(x,y,errBar,lineProps,transparent,patchSaturation,mainLine,edgeLines, args);
 
 if ~initialHoldStatus, hold off, end
 
@@ -146,7 +146,7 @@ end
 
 
 
-function H = makePlot(x,y,errBar,lineProps,transparent,patchSaturation)
+function H = makePlot(x,y,errBar,lineProps,transparent,patchSaturation,mainLine,edgeLines, args)
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -158,19 +158,22 @@ function H = makePlot(x,y,errBar,lineProps,transparent,patchSaturation)
     end % if
     
     % Plot to get the parameters of the line
-    if hostName == 'MATLAB'
-      H.mainLine=plot(x,y,lineProps{:});
-      
-    elseif hostName == 'Octave'
-      boolxDatestr = checkOctave_datestr(x);
-      if boolxDatestr
-        x = datenum(x);
-        x = x(:).';
-        H.mainLine=plot(x,y,lineProps{:});
-        datetick(gca);
-      else
-        H.mainLine=plot(x,y,lineProps{:});
-      end
+    switch hostName 
+        case 'MATLAB'
+            H.mainLine=plot(x,y,lineProps{:});      
+        case 'Octave'
+            boolxDatestr = checkOctave_datestr(x);
+            if boolxDatestr
+                x = datenum(x);
+                x = x(:).';
+                H.mainLine=plot(x,y,lineProps{:});
+                datetick(gca);
+            else
+                H.mainLine=plot(x,y,lineProps{:});
+            end
+    end
+    if mainLine == false
+        set(H.mainLine, 'Visible', 'off')
     end
 
 
@@ -205,29 +208,37 @@ function H = makePlot(x,y,errBar,lineProps,transparent,patchSaturation)
     %remove nans otherwise patch won't work
     xP(isnan(yP))=[];
     yP(isnan(yP))=[];
-    
+
+    yP(isnan(xP))=[];
+    xP(isnan(xP))=[];
 
     if isdatetime(x) && strcmp(hostName,'MATLAB')
       H.patch=patch(datenum(xP),yP,1);
     else
-      H.patch=patch(xP,yP,1);
+      H.patch=patch(xP,yP,1, 'DisplayName', args.patchDisplayName);
     end
 
 
-    set(H.patch,'facecolor',patchColor, ...
+    set(H.patch, ...
+        'facecolor',patchColor, ...
         'edgecolor','none', ...
         'facealpha',faceAlpha, ...
-        'HandleVisibility', 'off', ...
         'Tag', 'shadedErrorBar_patch')
+    
+    if isempty(args.patchDisplayName)
+        set(H.patch, ...
+            'HandleVisibility', 'off')
+    end
 
+    if edgeLines
+        %Make pretty edges around the patch. 
+        H.edge(1)=plot(x,lE,'-');
+        H.edge(2)=plot(x,uE,'-');
 
-    %Make pretty edges around the patch. 
-    H.edge(1)=plot(x,lE,'-');
-    H.edge(2)=plot(x,uE,'-');
-
-    set([H.edge], 'color',edgeColor, ...
-      'HandleVisibility','off', ...
-      'Tag', 'shadedErrorBar_edge')
+        set([H.edge], 'color',edgeColor, ...
+          'HandleVisibility','off', ...
+          'Tag', 'shadedErrorBar_edge')
+    end
 
 
     % Ensure the main line of the plot is above the other plot elements
